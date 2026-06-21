@@ -32,6 +32,19 @@ export function getMarkdownFromHeadings(
   return titleMarkdown + markdownHeadings
 }
 
+export function getVisibleHeadings(
+  headings: HeadingCache[],
+  options: TableOfContentsOptions,
+): HeadingCache[] {
+  if (headings.length === 0) return []
+
+  if (options.style === 'inlineFirstLevel') {
+    return getVisibleInlineFirstLevelHeadings(headings, options)
+  }
+
+  return getVisibleNestedListHeadings(headings, options)
+}
+
 function getMarkdownNestedListFromHeadings(
   headings: HeadingCache[],
   options: TableOfContentsOptions,
@@ -52,7 +65,32 @@ function getMarkdownListFromHeadings(
   options: TableOfContentsOptions,
 ): string | null {
   const prefix = isOrdered ? '1.' : '-'
-  const lines: string[] = []
+  const minLevel =
+    options.minLevel > 0 ? options.minLevel : Math.min(...headings.map((heading) => heading.level))
+  const lines = getVisibleNestedListHeadings(headings, options).map((heading) => {
+    return `${'\t'.repeat(heading.level - minLevel)}${prefix} ${getFormattedMarkdownHeading(heading.heading, options)}`
+  })
+
+  return lines.length > 0 ? lines.join('\n') : null
+}
+
+function getMarkdownInlineFirstLevelFromHeadings(
+  headings: HeadingCache[],
+  options: TableOfContentsOptions,
+): string | null {
+  const items = getVisibleInlineFirstLevelHeadings(headings, options).map((heading) => {
+    return getFormattedMarkdownHeading(heading.heading, options)
+  })
+  return items.length > 0 ? items.join(' | ') : null
+}
+
+function getVisibleNestedListHeadings(
+  headings: HeadingCache[],
+  options: TableOfContentsOptions,
+): HeadingCache[] {
+  if (headings.length === 0) return []
+
+  const visibleHeadings: HeadingCache[] = []
   const minLevel =
     options.minLevel > 0 ? options.minLevel : Math.min(...headings.map((heading) => heading.level))
   let unallowedLevel = 0
@@ -68,25 +106,23 @@ function getMarkdownListFromHeadings(
     if (heading.level < minLevel) continue
     if (options.maxLevel > 0 && heading.level > options.maxLevel) continue
     if (heading.heading.length === 0) continue
-    lines.push(
-      `${'\t'.repeat(heading.level - minLevel)}${prefix} ${getFormattedMarkdownHeading(heading.heading, options)}`,
-    )
+    visibleHeadings.push(heading)
   }
-  return lines.length > 0 ? lines.join('\n') : null
+
+  return visibleHeadings
 }
 
-function getMarkdownInlineFirstLevelFromHeadings(
+function getVisibleInlineFirstLevelHeadings(
   headings: HeadingCache[],
   options: TableOfContentsOptions,
-): string | null {
+): HeadingCache[] {
+  if (headings.length === 0) return []
+
   const minLevel =
     options.minLevel > 0 ? options.minLevel : Math.min(...headings.map((heading) => heading.level))
-  const items = headings
+
+  return headings
     .filter((heading) => heading.level === minLevel)
     .filter((heading) => heading.heading.length > 0)
     .filter((heading) => isHeadingAllowed(heading.heading, options))
-    .map((heading) => {
-      return getFormattedMarkdownHeading(heading.heading, options)
-    })
-  return items.length > 0 ? items.join(' | ') : null
 }

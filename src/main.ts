@@ -1,5 +1,13 @@
-import type { App, CachedMetadata, Editor, HeadingCache, MarkdownFileInfo, TFile } from 'obsidian'
-import { getMarkdownFromHeadings } from './headings.js'
+import type {
+  App,
+  CachedMetadata,
+  Editor,
+  HeadingCache,
+  MarkdownFileInfo,
+  TFile,
+  WorkspaceLeaf,
+} from 'obsidian'
+import { getMarkdownFromHeadings, getVisibleHeadings } from './headings.js'
 import { MarkdownRenderChild, MarkdownRenderer, Plugin } from './obsidian.js'
 import { getOptionsDocs, type PluginSettings, parseOptionsFromSourceText } from './options.js'
 import { DEFAULT_SETTINGS, SettingsTab } from './settings.js'
@@ -89,6 +97,14 @@ class Renderer extends MarkdownRenderChild {
   // Render on load
   onload(): void {
     void this.render()
+    this.registerDomEvent(
+      this.element,
+      'click',
+      (event: MouseEvent) => {
+        void this.onClick(event)
+      },
+      { capture: true },
+    )
     this.registerEvent(
       this.app.metadataCache.on('changed', (file: TFile) => {
         // Only re-render if the current file has changed
@@ -126,12 +142,16 @@ class Renderer extends MarkdownRenderChild {
       const markdown = getMarkdownFromHeadings(headings, options)
       if (options.debugInConsole) debug('Markdown', markdown)
       ;(this.element as any).empty()
-      MarkdownRenderer.renderMarkdown(markdown, this.element, this.sourcePath, this)
+      await MarkdownRenderer.renderMarkdown(markdown, this.element, this.sourcePath, this)
+      if (renderVersion !== this.renderVersion) return
+      if (fileSourceText !== null && options.includeLinks) {
+        this.bindHeadingLinks(getVisibleHeadings(headings, options))
+      }
     } catch (error) {
       debug('Error', error)
       const message = error instanceof Error ? error.message : String(error)
       const readableError = `_💥 Could not render table of contents (${message})_`
-      MarkdownRenderer.renderMarkdown(readableError, this.element, this.sourcePath, this)
+      await MarkdownRenderer.renderMarkdown(readableError, this.element, this.sourcePath, this)
     }
   }
 
@@ -145,6 +165,69 @@ class Renderer extends MarkdownRenderChild {
       debug('Source read error', error)
       return null
     }
+  }
+
+  bindHeadingLinks(headings: HeadingCache[]): void {
+    const links = Array.from(this.element.querySelectorAll<HTMLAnchorElement>('a.internal-link'))
+      .filter((link) => link.dataset.href?.includes('#'))
+      .slice(0, headings.length)
+
+    links.forEach((link, index) => {
+      const heading = headings[index]
+      if (!heading) return
+
+      link.dataset.tocLine = String(heading.position.start.line)
+    })
+  }
+
+  async onClick(event: MouseEvent): Promise<void> {
+    if (event.button !== 0 || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) {
+      return
+    }
+
+    const target = event.target
+    if (!(target instanceof HTMLElement)) return
+
+    const link = target.closest<HTMLAnchorElement>('a[data-toc-line]')
+    if (!link?.dataset.tocLine) return
+
+    const line = Number.parseInt(link.dataset.tocLine, 10)
+    if (Number.isNaN(line)) return
+
+    event.preventDefault()
+    event.stopPropagation()
+    await this.navigateToLine(line)
+  }
+
+  async navigateToLine(line: number): Promise<void> {
+    const file = this.app.vault.getAbstractFileByPath(this.sourcePath)
+    if (file === null) return
+
+    const leaf = this.getOpenMarkdownLeafForSourcePath() ?? this.app.workspace.getLeaf(false)
+
+    await leaf.openFile(file as TFile, { active: true, eState: { line } })
+    await leaf.loadIfDeferred()
+    await this.app.workspace.revealLeaf(leaf)
+
+    const view = leaf.view as { editor?: Editor }
+    if (!view.editor) return
+
+    const position = { line, ch: 0 }
+    view.editor.setCursor(position)
+    view.editor.scrollIntoView({ from: position, to: position }, true)
+  }
+
+  getOpenMarkdownLeafForSourcePath(): WorkspaceLeaf | null {
+    const activeLeaf = this.app.workspace.activeLeaf
+    if (activeLeaf && (activeLeaf.view as any).file?.path === this.sourcePath) {
+      return activeLeaf
+    }
+
+    return (
+      this.app.workspace
+        .getLeavesOfType('markdown')
+        .find((leaf) => (leaf.view as any).file?.path === this.sourcePath) ?? null
+    )
   }
 }
 

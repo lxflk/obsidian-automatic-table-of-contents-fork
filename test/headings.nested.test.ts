@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { getMarkdownFromHeadings } from '../src/headings.js'
+import { getMarkdownFromHeadings, getVisibleHeadings } from '../src/headings.js'
 import { parseOptionsFromSourceText } from '../src/options.js'
 import {
   sanitizeMd,
@@ -158,5 +158,33 @@ describe('Nested headings', () => {
 - Title 3 level 1
 `)
     expect(md).toEqual(expectedMd)
+  })
+
+  test('Returns visible headings in the same order as nested list links', () => {
+    const options = parseOptionsFromSourceText('')
+    options.exclude = /Title 1 level 1/
+    const headings = toHeadingCache(testStandardHeadings)
+
+    const visibleHeadings = getVisibleHeadings(headings, options)
+
+    expect(visibleHeadings.map((heading) => heading.heading)).toEqual([
+      'Title 2 level 1',
+      'Title 3 level 1',
+      'Title 3 level 2',
+    ])
+  })
+
+  test('Returns visible headings in inlineFirstLevel order', () => {
+    const options = parseOptionsFromSourceText('')
+    options.style = 'inlineFirstLevel'
+    const headings = toHeadingCache(testHeadingsWithoutFirstLevel)
+
+    const visibleHeadings = getVisibleHeadings(headings, options)
+
+    expect(visibleHeadings.map((heading) => heading.heading)).toEqual([
+      'Title 1 level 2',
+      'Title 2 level 2',
+      'Title 3 level 2',
+    ])
   })
 })
