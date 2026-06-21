@@ -3,6 +3,7 @@ import { getMarkdownFromHeadings } from './headings.js'
 import { MarkdownRenderChild, MarkdownRenderer, Plugin } from './obsidian.js'
 import { getOptionsDocs, type PluginSettings, parseOptionsFromSourceText } from './options.js'
 import { DEFAULT_SETTINGS, SettingsTab } from './settings.js'
+import { filterHeadingsInDisplayMath } from './source.js'
 
 const codeblockId = 'table-of-contents'
 const codeblockIdShort = 'toc'
@@ -68,6 +69,7 @@ class Renderer extends MarkdownRenderChild {
   sourcePath: string
   sourceText: string
   pluginSettings: PluginSettings
+  renderVersion = 0
 
   constructor(
     app: App,
@@ -86,7 +88,7 @@ class Renderer extends MarkdownRenderChild {
 
   // Render on load
   onload(): void {
-    this.render()
+    void this.render()
     this.registerEvent(
       this.app.metadataCache.on('changed', (file: TFile) => {
         // Only re-render if the current file has changed
@@ -99,16 +101,23 @@ class Renderer extends MarkdownRenderChild {
 
   // Render on file change
   onMetadataChange(): void {
-    this.render()
+    void this.render()
   }
 
-  render(): void {
+  async render(): Promise<void> {
+    this.renderVersion += 1
+    const renderVersion = this.renderVersion
+
     try {
       const options = parseOptionsFromSourceText(this.sourceText, this.pluginSettings)
       if (options.debugInConsole) debug('Options', options)
 
       const metadata: CachedMetadata | null = this.app.metadataCache.getCache(this.sourcePath)
-      const headings: HeadingCache[] = metadata?.headings ? metadata.headings : []
+      const cachedHeadings: HeadingCache[] = metadata?.headings ? metadata.headings : []
+      const fileSourceText = await this.readSourceText()
+      if (renderVersion !== this.renderVersion) return
+
+      const headings = filterHeadingsInDisplayMath(cachedHeadings, fileSourceText)
       if (options.debugInConsole) debug('Headings', headings)
 
       const markdown = getMarkdownFromHeadings(headings, options)
@@ -120,6 +129,18 @@ class Renderer extends MarkdownRenderChild {
       const message = error instanceof Error ? error.message : String(error)
       const readableError = `_💥 Could not render table of contents (${message})_`
       MarkdownRenderer.renderMarkdown(readableError, this.element, this.sourcePath, this)
+    }
+  }
+
+  async readSourceText(): Promise<string | null> {
+    const file = this.app.vault.getAbstractFileByPath(this.sourcePath)
+    if (file === null) return null
+
+    try {
+      return await this.app.vault.cachedRead(file as TFile)
+    } catch (error) {
+      debug('Source read error', error)
+      return null
     }
   }
 }

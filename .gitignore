@@ -7,3 +7,6 @@ data.json
 # Coverage
 coverage
 .nyc_output
+
+# Dependencies
+node_modules
