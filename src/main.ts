@@ -3,7 +3,7 @@ import { getMarkdownFromHeadings } from './headings.js'
 import { MarkdownRenderChild, MarkdownRenderer, Plugin } from './obsidian.js'
 import { getOptionsDocs, type PluginSettings, parseOptionsFromSourceText } from './options.js'
 import { DEFAULT_SETTINGS, SettingsTab } from './settings.js'
-import { filterHeadingsInDisplayMath } from './source.js'
+import { filterHeadingsInDisplayMath, getHeadingsFromSource } from './source.js'
 
 const codeblockId = 'table-of-contents'
 const codeblockIdShort = 'toc'
@@ -117,7 +117,10 @@ class Renderer extends MarkdownRenderChild {
       const fileSourceText = await this.readSourceText()
       if (renderVersion !== this.renderVersion) return
 
-      const headings = filterHeadingsInDisplayMath(cachedHeadings, fileSourceText)
+      const headings =
+        fileSourceText !== null
+          ? getHeadingsFromSource(fileSourceText)
+          : filterHeadingsInDisplayMath(cachedHeadings, fileSourceText)
       if (options.debugInConsole) debug('Headings', headings)
 
       const markdown = getMarkdownFromHeadings(headings, options)

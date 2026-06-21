@@ -1,6 +1,8 @@
 import type { HeadingCache } from 'obsidian'
 import { describe, expect, test } from 'vitest'
-import { filterHeadingsInDisplayMath } from '../src/source.js'
+import { getMarkdownFromHeadings } from '../src/headings.js'
+import { parseOptionsFromSourceText } from '../src/options.js'
+import { filterHeadingsInDisplayMath, getHeadingsFromSource } from '../src/source.js'
 
 describe('filterHeadingsInDisplayMath', () => {
   test('Removes headings reported from multiline LaTeX blocks', () => {
@@ -68,6 +70,95 @@ describe('filterHeadingsInDisplayMath', () => {
     const filteredHeadings = filterHeadingsInDisplayMath(headings, sourceText)
 
     expect(filteredHeadings).toEqual(headings)
+  })
+})
+
+describe('getHeadingsFromSource', () => {
+  test('Keeps headings after multiline LaTeX blocks', () => {
+    const sourceText = [
+      '```table-of-contents',
+      '```',
+      '# Deep learning',
+      '## Vision Transformers',
+      '## Scaled dot-product attention',
+      '- The similarity-score matrix has shape: $QK^T \\in \\mathbb{R}^{4\\times 4}$ $$',
+      'QK^{\\top} =',
+      '\\begin{bmatrix}',
+      '1.2 & 0.3 \\\\',
+      '0.4 & 2.1',
+      '\\end{bmatrix}',
+      '$$',
+      '- Lets assume a numeric example now:$$',
+      'QK^{\\top} =',
+      '\\begin{bmatrix}',
+      '1.2 & 0.3 \\\\',
+      '0.4 & 2.1',
+      '\\end{bmatrix}',
+      '$$',
+      '## Dropout',
+      '## U-net',
+      '# Computer Vision Tasks',
+      '## Edge detection',
+      '# Delineation',
+      '## Hough transform',
+      '- A line is represented in polar form by: $$',
+      'x\\cos(\\theta)+y\\sin(\\theta)=r',
+      '$$',
+      '## Minimum Spanning Tree',
+      '- At each iteration:',
+      '\t1. compute image forces from the gradient image',
+      '\t2. solve a linear system such as $$',
+      '(K+\\alpha I)X_t',
+      '=',
+      '\\alpha X_{t-1}',
+      '-',
+      '\\frac{\\partial E_G}{\\partial X}',
+      '$$',
+      '\t3. update the curve',
+      '## Live Wire',
+    ].join('\n')
+
+    const headings = getHeadingsFromSource(sourceText)
+
+    expect(headings.map((heading) => heading.heading)).toEqual([
+      'Deep learning',
+      'Vision Transformers',
+      'Scaled dot-product attention',
+      'Dropout',
+      'U-net',
+      'Computer Vision Tasks',
+      'Edge detection',
+      'Delineation',
+      'Hough transform',
+      'Minimum Spanning Tree',
+      'Live Wire',
+    ])
+  })
+
+  test('Generates a full table of contents from source headings', () => {
+    const sourceText = [
+      '# Deep learning',
+      '## Scaled dot-product attention',
+      '$$',
+      '(K+\\alpha I)X_t',
+      '=',
+      '\\alpha X_{t-1}',
+      '$$',
+      '## Dropout',
+      '# Computer Vision Tasks',
+      '## Edge detection',
+    ].join('\n')
+    const options = parseOptionsFromSourceText('')
+
+    const markdown = getMarkdownFromHeadings(getHeadingsFromSource(sourceText), options)
+
+    expect(markdown).toContain('[[#Deep learning|Deep learning]]')
+    expect(markdown).toContain('[[#Scaled dot-product attention|Scaled dot-product attention]]')
+    expect(markdown).toContain('[[#Dropout|Dropout]]')
+    expect(markdown).toContain('[[#Computer Vision Tasks|Computer Vision Tasks]]')
+    expect(markdown).toContain('[[#Edge detection|Edge detection]]')
+    expect(markdown).not.toContain('(K+\\alpha I)X_t')
+    expect(markdown).not.toContain('\\alpha X_{t-1}')
   })
 })
 
