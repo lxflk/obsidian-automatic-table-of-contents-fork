@@ -105,6 +105,22 @@ class Renderer extends MarkdownRenderChild {
       },
       { capture: true },
     )
+    this.registerDomEvent(
+      this.element,
+      'mouseover',
+      (event: MouseEvent) => {
+        this.onHover(event)
+      },
+      { capture: true },
+    )
+    this.registerDomEvent(
+      this.element,
+      'pointerover',
+      (event: PointerEvent) => {
+        this.onHover(event)
+      },
+      { capture: true },
+    )
     this.registerEvent(
       this.app.metadataCache.on('changed', (file: TFile) => {
         // Only re-render if the current file has changed
@@ -177,14 +193,16 @@ class Renderer extends MarkdownRenderChild {
       if (!heading) return
 
       link.dataset.tocLine = String(heading.position.start.line)
+      link.classList.remove('internal-link')
+      link.classList.add('toc-line-link')
+      link.href = '#'
+      link.removeAttribute('data-href')
+      link.removeAttribute('aria-label')
+      link.removeAttribute('title')
     })
   }
 
   async onClick(event: MouseEvent): Promise<void> {
-    if (event.button !== 0 || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) {
-      return
-    }
-
     const target = event.target
     if (!(target instanceof HTMLElement)) return
 
@@ -196,7 +214,25 @@ class Renderer extends MarkdownRenderChild {
 
     event.preventDefault()
     event.stopPropagation()
+    event.stopImmediatePropagation()
+
+    if (event.button !== 0 || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) {
+      return
+    }
+
     await this.navigateToLine(line)
+  }
+
+  onHover(event: MouseEvent | PointerEvent): void {
+    const target = event.target
+    if (!(target instanceof HTMLElement)) return
+
+    const link = target.closest<HTMLAnchorElement>('a[data-toc-line]')
+    if (!link?.dataset.tocLine) return
+
+    event.preventDefault()
+    event.stopPropagation()
+    event.stopImmediatePropagation()
   }
 
   async navigateToLine(line: number): Promise<void> {
